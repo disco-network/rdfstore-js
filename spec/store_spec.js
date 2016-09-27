@@ -5,7 +5,7 @@ describe("Store", function () {
 
     it("Should pass integration test #1", function (done) {
         new Store.Store({name: 'test', overwrite: true}, function (err, store) {
-            expect(err == null);
+            expect(err).toBe(null);
             store.execute('INSERT DATA {  <http://example/book3> <http://example.com/vocab#title> <http://test.com/example> }', function (err, result) {
                 expect(err).toBe(null);
                 store.execute('SELECT * { ?s ?p ?o }', function (err, results) {
@@ -24,19 +24,25 @@ describe("Store", function () {
 
     it("Should pass integration test #1a", function (done) {
         new Store.Store({name: 'test', overwrite: true}, function (err, store) {
-            expect(err == null);
-            var graphName = "http://example/graph/";
-            store.executeWithEnvironment('INSERT DATA {  <http://example/book3> <http://example.com/vocab#title> <http://test.com/example> }', [graphName], [], function (err, result) {
+            expect(err).toBe(null);
+            store.execute('SELECT * {}', function (err, results) {
                 expect(err).toBe(null);
-                store.executeWithEnvironment('SELECT * { ?s ?p ?o }', [graphName], [], function (err, results) {
-                    expect(err).toBe(null);
-                    expect(results.length).toBe(1);
-                    expect(results[0].s.value).toBe("http://example/book3");
-                    expect(results[0].p.value).toBe("http://example.com/vocab#title");
-                    expect(results[0].o.value).toBe("http://test.com/example");
-                    store.close(function () {
-                        done();
-                    });
+                expect(results.length).toBe(1);
+                store.close(function () {
+                    done();
+                });
+            });
+        });
+    });
+
+    it("Should pass integration test #1b", function (done) {
+        new Store.Store({name: 'test', overwrite: true}, function (err, store) {
+            expect(err).toBe(null);
+            store.execute('SELECT * { OPTIONAL { ?s ?p ?o } }', function (err, results) {
+                expect(err).toBe(null);
+                expect(results.length).toBe(1);
+                store.close(function () {
+                    done();
                 });
             });
         });
