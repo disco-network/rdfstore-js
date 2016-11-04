@@ -1,6 +1,9 @@
 
 // imports
 var utils = require('./utils');
+var diskDB = require('./diskdb');
+var _ = utils;
+var async = utils;
 
 /*
  * "perfect" indices for RDF indexing
@@ -12,188 +15,143 @@ var utils = require('./utils');
  * GSP  (s, ?, ?, g), (s, p, ?, g)
  * OS   (s, ?, o, ?)
  *
- * @param configuration['dbName'] Name for the IndexedDB
+ * @param configuration['dbName'] Name for the db
  * @return The newly created backend.
  */
-PersistentQuadBackend = function (configuration, callback) {
+QuadBackend = function (configuration, callback) {
     var that = this;
 
     if (arguments !== 0) {
 
-        utils.registerIndexedDB(that);
+        diskDB.register(that);
 
         this.indexMap = {};
-        this.indices = ['S','P','O','G','SP','SO','SG','PO','PG','OG','SPO','SPG','SOG','POG','SPOG']
+        this.indices = ['SPOG', 'GP', 'OGS', 'POG', 'GSP', 'OS'];
         this.componentOrders = {
-            S: ['subject','predicate','object','graph'],
-            P: ['predicate','subject','object','graph'],
-            O: ['object','subject','predicate','graph'],
-            G: ['graph','subject','predicate','object'],
-            SP: ['subject','predicate','object','graph'],
-            SO: ['subject', 'object','predicate','graph'],
-            SG: ['subject', 'graph','predicate','object'],
-            PO: ['predicate','object','subject','graph'],
-            PG: ['predicate', 'graph','subject','object'],
-            OG: ['object','graph','subject','predicate'],
-            SPO: ['subject','predicate','object','graph'],
-            SPG: ['subject', 'predicate', 'graph','object'],
-            SOG: ['subject', 'object', 'graph','predicate'],
-            POG: ['predicate', 'object', 'graph','subject'],
-            SPOG: ['subject', 'predicate', 'object', 'graph']
+            SPOG:['subject', 'predicate', 'object', 'graph'],
+            GP:['graph', 'predicate', 'subject', 'object'],
+            OGS:['object', 'graph', 'subject', 'predicate'],
+            POG:['predicate', 'object', 'graph', 'subject'],
+            GSP:['graph', 'subject', 'predicate', 'object'],
+            OS:['object', 'subject', 'predicate', 'graph']
         };
-        this.componentOrdersMap  = {};
-        for(var index in this.componentOrders) {
-            var indexComponents = this.componentOrders[index];
-            var key = indexComponents.slice(0,index.length).sort().join(".");
-            this.componentOrdersMap[key] = index;
-        }
 
         that.dbName = configuration['name'] || "rdfstorejs";
-        var request = that.indexedDB.open(this.dbName+"_db", 1);
-        request.onerror = function(event) {
-            callback(null,new Error("Error opening IndexedDB: " + event.target.errorCode));
-        };
-        request.onsuccess = function(event) {
-            that.db = event.target.result;
-            callback(that);
-        };
-        request.onupgradeneeded = function(event) {
-            var db = event.target.result;
-            var objectStore = db.createObjectStore(that.dbName, { keyPath: 'SPOG'});
-            utils.each(that.indices, function(index){
-                if(index !== 'SPOG') {
-                    objectStore.createIndex(index,index,{unique: false});
-                }
-            });
-        };
+        var keys = {}; keys[that.dbName] = { name: 'SPOG' }
+        var request = that.db.open(this.dbName+"_db", [ that.dbName ], keys);
+        
+        callback(that);
     }
 };
 
 
-PersistentQuadBackend.prototype.index = function (quad, callback) {
+QuadBackend.prototype.index = function (quad, callback) {
     var that = this;
-    utils.each(this.indices, function(index){
+    _.each(this.indices, function(index){
         quad[index] = that._genMinIndexKey(quad, index);
     });
-
-    var transaction = that.db.transaction([that.dbName],"readwrite");
-    transaction.oncomplete = function(event) {
-        //callback(true)
-    };
-    transaction.onerror = function(event) {
-        callback(null, new Error(event.target.statusCode));
-    };
-    var objectStore = transaction.objectStore(that.dbName);
-    var request = objectStore.add(quad);
-    request.onsuccess = function(event) {
-        callback(true)
-    };
+    
+    var objectStore = that.db.getStore(that.dbName);
+    var request = objectStore.insert(quad);
+    if(!request.error) {
+        callback(true);
+    }
+    else callback(request.error);
 };
 
-PersistentQuadBackend.prototype.range = function (pattern, callback) {
+QuadBackend.prototype.range = function (pattern, callback) {
     var that = this;
-    var objectStore = that.db.transaction([that.dbName]).objectStore(that.dbName);
+    var objectStore = that.db.getStore(that.dbName);
     var indexKey = this._indexForPattern(pattern);
     var minIndexKeyValue = this._genMinIndexKey(pattern,indexKey);
     var maxIndexKeyValue = this._genMaxIndexKey(pattern,indexKey);
-    var keyRange = that.IDBKeyRange.bound(minIndexKeyValue, maxIndexKeyValue, false, false);
     var quads = [];
-    var cursorSource;
 
-    if(indexKey === 'SPOG') {
-        cursorSource = objectStore;
-    } else {
-        cursorSource = objectStore.index(indexKey);
-    }
-
-    cursorSource.openCursor(keyRange).onsuccess = function(event) {
-        var cursor = event.target.result;
-        if (cursor) {
-            quads.push(cursor.value);
-            cursor.continue();
-        } else {
-            callback(quads);
-        }
-    }
+    var tmp = objectStore.getAll();
+    _.each(tmp, function(el) {
+      if(el[indexKey] >= minIndexKeyValue && el[indexKey] <= maxIndexKeyValue)
+        quads.push(el);
+    })
+    callback(quads);
 };
 
-PersistentQuadBackend.prototype.search = function (quad, callback) {
+QuadBackend.prototype.search = function (quad, callback) {
     var that = this;
-    var objectStore = that.db.transaction([that.dbName]).objectStore(that.dbName);
+    var objectStore = that.db.getStore(that.dbName);
     var indexKey = this._genMinIndexKey(quad, 'SPOG');
-    var request = objectStore.get(indexKey);
-    request.onerror = function(event) {
-        callback(null, new Error(event.target.statusCode));
-    };
-    request.onsuccess = function(event) {
-        callback(event.target.result != null);
-    };
+    var result = objectStore.getOne('SPOG', indexKey);
+    callback(result != null);
 };
 
 
-PersistentQuadBackend.prototype.delete = function (quad, callback) {
+QuadBackend.prototype.delete = function (quad, callback) {
     var that = this;
     var indexKey = that._genMinIndexKey(quad, 'SPOG');
-    var request = that.db.transaction([that.dbName], "readwrite")
-        .objectStore(that.dbName)
-        .delete(indexKey);
-    request.onsuccess = function() {
-        callback(true);
-    };
-    request.onerror = function(event) {
-        callback(null, new Error(event.target.statusCode));
-    };
+    var request = that.db
+        .getStore(that.dbName)
+        .delete('SPOG', indexKey);
+    callback(true);
 };
 
-PersistentQuadBackend.prototype._genMinIndexKey = function(quad,index) {
+QuadBackend.prototype._genMinIndexKey = function(quad,index) {
     var indexComponents = this.componentOrders[index];
-    return utils.map(indexComponents, function(component){
+    return _.map(indexComponents, function(component){
         if(typeof(quad[component]) === 'string' || quad[component] == null) {
-            return "0";
+            return "-1";
         } else {
-            return quad[component];
+            return ""+quad[component];
         }
     }).join('.');
 };
 
-PersistentQuadBackend.prototype._genMaxIndexKey = function(quad,index) {
+QuadBackend.prototype._genMaxIndexKey = function(quad,index) {
     var indexComponents = this.componentOrders[index];
     var acum = [];
     var foundFirstMissing = false;
     for(var i=0; i<indexComponents.length; i++){
         var component = indexComponents[i];
-        var componentValue = quad[component];
+        var componentValue= quad[component];
         if(typeof(componentValue) === 'string') {
-            acum[i] = 'z';
+            if (foundFirstMissing === false) {
+                    foundFirstMissing = true;
+                if (i - 1 >= 0) {
+                    acum[i - 1] = acum[i - 1] + 1
+                }
+            }
+            acum[i] = -1;
         } else {
             acum[i] = componentValue;
         }
     }
-    return utils.map(acum, function(componentValue){
+    return _.map(acum, function(componentValue){
         return ""+componentValue
     }).join('.');
 };
 
 
-PersistentQuadBackend.prototype._indexForPattern = function (pattern) {
-    var that = this;
+QuadBackend.prototype._indexForPattern = function (pattern) {
     var indexKey = pattern.indexKey;
-    var indexKeyString = indexKey.sort().join(".");
-    var index = that.componentOrdersMap[indexKeyString];
-    if(index == null) {
-        throw new Error("Error, cannot find index for indexKey "+indexKeyString);
-    } else {
-        return index;
+
+    for (var i = 0; i < this.indices.length; i++) {
+        var index = this.indices[i];
+        var indexComponents = this.componentOrders[index];
+        for (var j = 0; j < indexComponents.length; j++) {
+            if (_.include(indexKey, indexComponents[j]) === false) {
+                break;
+            }
+            if (j == indexKey.length - 1) {
+                return index;
+            }
+        }
     }
+
+    return 'SPOG'; // If no other match, we return the more generic index
 };
 
 
-PersistentQuadBackend.prototype.clear = function(callback) {
+QuadBackend.prototype.clear = function(callback) {
     var that = this;
-    var transaction = that.db.transaction([that.dbName],"readwrite"), request;
-    request = transaction.objectStore(that.dbName).clear();
-    request.onsuccess = function(){ callback(); };
-    request.onerror = function(){ callback(); };
+    request = that.db.clear(that.dbName);
 };
 
-module.exports.PersistentQuadBackend = PersistentQuadBackend;
+module.exports.QuadBackend = QuadBackend;
