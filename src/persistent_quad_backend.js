@@ -154,4 +154,4 @@ QuadBackend.prototype.clear = function(callback) {
     request = that.db.clear(that.dbName);
 };
 
-module.exports.QuadBackend = QuadBackend;
+module.exports.PersistentQuadBackend = QuadBackend;

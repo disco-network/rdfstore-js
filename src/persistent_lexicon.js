@@ -140,7 +140,7 @@ Lexicon.prototype.registerBlank = function(callback) {
     if(requestAdd.error)
         callback(null, new Error("Error inserting the URI data"+requestAdd.error));
     else
-        callback(resultAdd.result);
+        callback(requestAdd.result);
 };
 
 /**
@@ -387,5 +387,5 @@ Lexicon.prototype._unregisterTerm = function (kind, oid, callback) {
 };
 
 module.exports = {
-    Lexicon: Lexicon
+    PersistentLexicon: Lexicon
 };
