@@ -52,7 +52,6 @@ function DbStore(db, name, key, keyName) {
   
   this.getOne = function(property, value) {
     var pattern = {}; pattern[property] = value;
-    console.log('getOne', property, value, this.collection.findOne(pattern));
     return this.collection.findOne(pattern);
   }
   
