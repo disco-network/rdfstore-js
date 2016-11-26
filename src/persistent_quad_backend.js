@@ -67,12 +67,16 @@ QuadBackend.prototype.range = function (pattern, callback) {
     var maxIndexKeyValue = this._genMaxIndexKey(pattern,indexKey);
     var quads = [];
 
-    var tmp = objectStore.getAll();
-    _.each(tmp, function(el) {
-      if(that.compareIndices(el[indexKey], minIndexKeyValue) !== -1
-        && that.compareIndices(el[indexKey], maxIndexKeyValue) !== 1)
-        quads.push(el);
-    })
+    if (maxIndexKeyValue.split(".").filter(x => x === "0").length === 0) {
+
+      var tmp = objectStore.getAll();
+      _.each(tmp, function(el) {
+        if(that.compareIndices(el[indexKey], minIndexKeyValue) !== -1
+          && that.compareIndices(el[indexKey], maxIndexKeyValue) !== 1)
+          quads.push(el);
+      })
+    }
+
     callback(quads);
 };
 
@@ -81,10 +85,12 @@ QuadBackend.prototype.compareIndices = function (left, right) {
     var rightIndexParts = right.split(".");
 
     for (var i = 0; i < leftIndexParts.length; ++i) {
-      if (leftIndexParts[i] < rightIndexParts[i]) {
+      var leftPart = parseInt(leftIndexParts[i]);
+      var rightPart = parseInt(rightIndexParts[i]);
+      if (leftPart < rightPart) {
         return -1;
       }
-      else if (rightIndexParts[i] > rightIndexParts[i]) {
+      else if (leftPart > rightPart) {
         return 1;
       }
       else continue;
