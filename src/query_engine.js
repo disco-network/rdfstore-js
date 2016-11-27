@@ -501,9 +501,10 @@ QueryEngine.prototype.normalizeQuad = function(quad, queryEnv, shouldIndex, call
 QueryEngine.prototype.denormalizeBindingsList = function(bindingsList, env, callback) {
     var that = this;
     var denormList = [];
+    var lazyCache = {};
 
     async.eachSeries(bindingsList, function(bindings, k){
-        that.denormalizeBindings(bindings, env, function(denorm){
+        that.denormalizeBindings(bindings, env, lazyCache, function(denorm){
             denormList.push(denorm);
             k();
         });
@@ -557,7 +558,7 @@ QueryEngine.prototype.copyDenormalizedBindings = function(bindingsList, out, cal
     });
 };
 
-QueryEngine.prototype.denormalizeBindings = function(bindings, env, callback) {
+QueryEngine.prototype.denormalizeBindings = function(bindings, env, lazyCache, callback) {
     var variables = _.keys(bindings);
     var envOut = env.outCache;
     var that = this;
@@ -576,12 +577,18 @@ QueryEngine.prototype.denormalizeBindings = function(bindings, env, callback) {
                 bindings[variable] = envOut[oid];
                 k();
             } else {
-                that.lexicon.retrieve(oid, function(val){
-                    bindings[variable] = val;
+                var cb = function(val){
+                    lazyCache['#'+oid] = bindings[variable] = val;
                     if(val.token === 'blank')
                         env.blanks[val.value] = oid;
                     k();
-                });
+                };
+                if (lazyCache['#'+oid]) {
+                    process.nextTick(function() { cb(lazyCache['#'+oid]) });
+                }
+                else {
+                    that.lexicon.retrieve(oid, cb);
+                }
             }
         }
     }, function(){
@@ -644,7 +651,12 @@ QueryEngine.prototype.executeQuery = function(syntaxTree, callback, defaultDatas
                 if(typeof(result) === 'object' && result.denorm === true) {
                     callback(null, result['bindings']);
                 } else {
+                    var id = Math.random();
+                    var timestamp = process.hrtime();
+                    console.log("rdfstore: denormalizeBindingsList", id);
                     that.denormalizeBindingsList(result, queryEnv, function(result){
+                        var duration = process.hrtime(timestamp);
+                        console.log("rdfstore: finished denormalizeBindingsList " + id + " after " + (duration[0] + duration[1] / 1000000000) + " seconds");
                         callback(null, result);
                     });
                 }
@@ -804,6 +816,17 @@ QueryEngine.prototype.executeSelect = function(unit, env, defaultDataset, namedD
     } else {
         callback(new Error("Cannot execute " + unit.kind + " query as a select query"));
     }
+};
+var oldFunc = QueryEngine.prototype.executeSelect;
+QueryEngine.prototype.executeSelect = function(unit, env, defaultDataset, namedDataset, callback) {
+    var id = Math.random();
+    console.log("rdfstore: executeSelect", id, unit);
+    var timestamp = process.hrtime();
+    oldFunc.call(this, unit, env, defaultDataset, namedDataset, function() {
+        var duration = process.hrtime(timestamp);
+        console.log("rdfstore: finished executeSelect " + id + "after " + (duration[0] + duration[1]/1000000000) + " seconds");
+        callback.apply(null, arguments);
+    });
 };
 
 
