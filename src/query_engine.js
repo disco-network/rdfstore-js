@@ -656,7 +656,7 @@ QueryEngine.prototype.executeQuery = function(syntaxTree, callback, defaultDatas
                     console.log("rdfstore: denormalizeBindingsList", id);
                     that.denormalizeBindingsList(result, queryEnv, function(result){
                         var duration = process.hrtime(timestamp);
-                        console.log("rdfstore: finished denormalizeBindingsList " + id + " after " + (duration[0] + duration[1] / 1000000000) + " seconds");
+                        console.log("rdfstore: finished denormalizeBindingsList " + id + " after [" + (duration[0] + duration[1] / 1000000) + "ms]");
                         callback(null, result);
                     });
                 }
@@ -824,7 +824,7 @@ QueryEngine.prototype.executeSelect = function(unit, env, defaultDataset, namedD
     var timestamp = process.hrtime();
     oldFunc.call(this, unit, env, defaultDataset, namedDataset, function() {
         var duration = process.hrtime(timestamp);
-        console.log("rdfstore: finished executeSelect " + id + "after " + (duration[0] + duration[1]/1000000000) + " seconds");
+        console.log("rdfstore: finished executeSelect " + id + " after [" + (duration[0] + duration[1]/1000000) + "ms]");
         callback.apply(null, arguments);
     });
 };
